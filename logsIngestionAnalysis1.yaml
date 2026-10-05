@@ -1,0 +1,121 @@
+# =====================================================================
+# logsIngestionAnalysis1 — your workflow, with fixes marked  # FIX
+#
+# Contract with nr_utils.py:
+#   Python starts the run via NerdGraph and gets the NR runId back.
+#   The workflow ends by writing ONE Log with:
+#       runId = ${{ .workflowConstants.runId }}   and   phase = success | failure
+#   poll_workflow_status() waits for exactly that Log.
+#
+# Paste into: Workflow Automation > logsIngestionAnalysis1 > Edit (YAML) > Save.
+# The editor validates on save; if it flags a selector/output name, check a past
+# run's step output for trigger_nr_agent and use the field names you see there.
+# =====================================================================
+name: logsIngestionAnalysis1
+description: Run Ask AI agent to investigate logsIngestionAnalysis and return response to caller
+workflowInputs:
+  agent_id:
+    type: String
+    required: true
+    defaultValue: ask_ai_v2
+  accountNumber:
+    type: String
+    required: true
+    defaultValue: "8124546"
+    validations:
+      - type: maxLength
+        errorMessage: Account Number cannot exceed 100 characters
+        length: 100
+  # FIX (optional): real ingestion numbers from Python. Enable in config.json with
+  #   "workflow": { "sendIngestionContext": true }
+  ingestionContext:
+    type: String
+    required: false
+    defaultValue: "not provided"
+
+steps:
+  - name: logWorkflowStart
+    type: action
+    action: newrelic.ingest.sendLogs
+    version: 1
+    inputs:
+      logs:
+        - message: '[logsIngestionAnalysis] Workflow started for account'
+          attributes:
+            workflowName: ${{ .workflowConstants.definitionName }}
+            runId: ${{ .workflowConstants.runId }}
+            startedAt: ${{ .workflowConstants.startedAt }}
+            accountNumber: ${{ .workflowInputs.accountNumber }}
+            agentId: ${{ .workflowInputs.agent_id }}
+            phase: started
+
+  - name: trigger_nr_agent
+    type: action
+    action: newrelic.agent.run
+    version: 1
+    inputs:
+      prompt: >-
+        Do investigation for the New Relic account number below and respond with
+        a summary response covering amount of total logs ingested in the account
+        for the last 1-2 days and top trends contributing to increased logs
+        ingestion. Provide specific recommendations in the account to reduce the
+        size of logs and pipeline control rules that can be configured.
+        Express every drop rule as NRQL of the form "SELECT * FROM Log WHERE ..."
+        with an estimated GB/day saved; never propose a rule without a WHERE clause.
+        Keep the whole answer under 3000 characters.
+        Account Number: "${{ .workflowInputs.accountNumber }}".
+        Pre-computed ingestion data (JSON, may be "not provided"): ${{ .workflowInputs.ingestionContext }}
+      agentId: ${{ .workflowInputs.agent_id }}
+      selectors:
+        # FIX: these selected '.success1' / '.errorMessage1', fields the agent never
+        # returns, while the switch/error steps read '.success' / '.errorMessage'.
+        # Select the real fields under distinct names and reference those names below.
+        - name: agentSuccess
+          expression: .success
+        - name: agentError
+          expression: .errorMessage
+        - name: agentResponse
+          expression: .response.finalAnswer
+
+  - name: evaluateAgentResult
+    type: switch
+    switch:
+      - condition: ${{ .steps.trigger_nr_agent.outputs.agentSuccess }}     # FIX
+        next: log_agent_response
+    next: handleAgentError
+
+  - name: log_agent_response
+    type: action
+    action: newrelic.ingest.sendLogs
+    version: 1
+    inputs:
+      logs:
+        # FIX: message is now just the agent answer (metadata lives in attributes),
+        # so the Flask UI shows clean text.
+        - message: ${{ .steps.trigger_nr_agent.outputs.agentResponse }}
+          attributes:
+            workflowName: ${{ .workflowConstants.definitionName }}
+            runId: ${{ .workflowConstants.runId }}
+            accountNumber: ${{ .workflowInputs.accountNumber }}
+            agentId: ${{ .workflowInputs.agent_id }}
+            phase: success
+    next: end
+
+  - name: handleAgentError
+    type: action
+    action: newrelic.ingest.sendLogs
+    version: 1
+    inputs:
+      logs:
+        - message: |
+            [ERROR] SRE Agent Investigation FAILED
+            Account Number: ${{ .workflowInputs.accountNumber }}
+            Error: ${{ .steps.trigger_nr_agent.outputs.agentError }}
+          attributes:
+            # FIX: failure log had no runId, so a caller could never see the failure
+            workflowName: ${{ .workflowConstants.definitionName }}
+            runId: ${{ .workflowConstants.runId }}
+            accountNumber: ${{ .workflowInputs.accountNumber }}
+            errorMessage: ${{ .steps.trigger_nr_agent.outputs.agentError }}
+            phase: failure
+    next: end
