@@ -1,0 +1,46 @@
+{
+  "schedules": {
+    "warningJob12hrTimeIST": "08:00",
+    "criticalJob24hrTimeIST": "15:59"
+  },
+  "webhook": {
+    "baseUrl": "http://localhost:5000"
+  },
+  "newrelic": {
+    "apiKey": "NRAK",
+    "licenseKey": "45",
+    "region": "US"
+  },
+  "smtp": {
+    "server": "smtp.gmail.com",
+    "port": 587,
+    "user": "oracleanz.digitalprime@gmail.com",
+    "password": ""
+  },
+  "accounts": [
+    {
+      "accountId": "8124546",
+      "accountLogBudgetsInGB": 0.0,
+      "accountAlertEmailIds": ["ramanandh.balaji@gmail.com", "rsankaralingam@newrelic.com"]
+    },
+     {
+      "accountId": "8124546",
+      "accountLogBudgetsInGB": 10,
+      "accountAlertEmailIds": ["ramanandh.balaji@gmail.com", "rsankaralingam@newrelic.com"]
+    }
+  ],
+  "apps": [
+    {
+      "appName": "LoyaltyService",
+      "accountId": "8124546",
+      "logsDailyBudgetInGB": 10,
+      "alertEmailIds": ["ramanandh.balaji@gmail.com", "rsankaralingam@newrelic.com"]
+    },
+    {
+      "appName": "APIGateway",
+      "accountId": "8124546",
+      "logsDailyBudgetInGB": 10,
+      "alertEmailIds": ["ramanandh.balaji@gmail.com", "rsankaralingam@newrelic.com"]
+    }
+  ]
+}
